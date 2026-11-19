@@ -1,12 +1,10 @@
-"""Win32 helpers for frameless fullscreen, multi-monitor Live Wallpaper, and global hotkey."""
+"""Win32 helpers for frameless fullscreen and Live Wallpaper (Windows 10 & 11 24H2+ WorkerW)."""
 
 from __future__ import annotations
 
 import ctypes
 import sys
-import threading
 import time
-from typing import Callable
 
 if sys.platform == "win32":
     from ctypes import wintypes
@@ -14,6 +12,7 @@ if sys.platform == "win32":
     user32 = ctypes.windll.user32
 
     try:
+        # Per-Monitor V2 DPI awareness so full-screen coordinates match physical pixels
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
     except Exception:
         pass
@@ -37,14 +36,6 @@ if sys.platform == "win32":
 
     SM_CXSCREEN = 0
     SM_CYSCREEN = 1
-    SM_XVIRTUALSCREEN = 76
-    SM_YVIRTUALSCREEN = 77
-    SM_CXVIRTUALSCREEN = 78
-    SM_CYVIRTUALSCREEN = 79
-
-    MOD_ALT = 0x0001
-    MOD_CONTROL = 0x0002
-    WM_HOTKEY = 0x0312
 
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
@@ -59,17 +50,6 @@ def _find_window_by_title(title: str, timeout_sec: float = 8.0) -> int:
             return int(hwnd)
         time.sleep(0.08)
     return 0
-
-
-def _get_screen_bounds(multi_monitor: bool) -> tuple[int, int, int, int]:
-    if multi_monitor:
-        x = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
-        y = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
-        w = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
-        h = user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
-        if w > 0 and h > 0:
-            return (x, y, w, h)
-    return (0, 0, user32.GetSystemMetrics(SM_CXSCREEN), user32.GetSystemMetrics(SM_CYSCREEN))
 
 
 def strip_window_chrome(title: str) -> bool:
@@ -90,7 +70,7 @@ def strip_window_chrome(title: str) -> bool:
     return True
 
 
-def attach_as_wallpaper(title: str, multi_monitor: bool = False) -> bool:
+def attach_as_wallpaper(title: str) -> bool:
     """Attach the window behind desktop icons on Windows 10 & Windows 11 (24H2/26200+)."""
     if sys.platform != "win32":
         return False
@@ -99,12 +79,14 @@ def attach_as_wallpaper(title: str, multi_monitor: bool = False) -> bool:
     if not hwnd:
         return False
 
+    # Wait briefly for WebView2 child surface to initialize
     time.sleep(0.35)
 
     progman = user32.FindWindowW("Progman", None)
     if not progman:
         return False
 
+    # Trigger WorkerW creation (0x052C with 0x0D/1 works on both Win10 and Win11 24H2)
     result = ctypes.c_ulong(0)
     user32.SendMessageTimeoutW(progman, 0x052C, 0x0D, 0x01, SMTO_NORMAL, 1000, ctypes.byref(result))
     user32.SendMessageTimeoutW(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, ctypes.byref(result))
@@ -124,6 +106,7 @@ def attach_as_wallpaper(title: str, multi_monitor: bool = False) -> bool:
 
     user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
 
+    # Check if WorkerW is a child of Progman (Windows 11 24H2+ raised desktop)
     progman_worker = user32.FindWindowExW(progman, 0, "WorkerW", None)
     progman_sv = user32.FindWindowExW(progman, 0, "SHELLDLL_DefView", None)
 
@@ -136,38 +119,19 @@ def attach_as_wallpaper(title: str, multi_monitor: bool = False) -> bool:
     ex_style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style)
 
-    x, y, w, h = _get_screen_bounds(multi_monitor)
+    w = user32.GetSystemMetrics(SM_CXSCREEN)
+    h = user32.GetSystemMetrics(SM_CYSCREEN)
 
     if workerw_holder[0]:
         user32.SetParent(hwnd, workerw_holder[0])
-        user32.SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+        user32.SetWindowPos(hwnd, 0, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
     elif progman_worker:
         user32.SetParent(hwnd, progman_worker)
-        user32.SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+        user32.SetWindowPos(hwnd, 0, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
     else:
+        # Fallback: place directly inside Progman behind SHELLDLL_DefView
         user32.SetParent(hwnd, progman)
-        insert_after = progman_sv or shell_view_holder[0] or 1
-        user32.SetWindowPos(hwnd, insert_after, x, y, w, h, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+        insert_after = progman_sv or shell_view_holder[0] or 1  # HWND_BOTTOM = 1
+        user32.SetWindowPos(hwnd, insert_after, 0, 0, w, h, SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW)
 
     return True
-
-
-def start_global_hotkey(on_trigger: Callable[[], None]) -> None:
-    """Register Ctrl + Alt + N global hotkey to toggle visuals on/off from any app."""
-    if sys.platform != "win32":
-        return
-
-    def _loop() -> None:
-        hotkey_id = 1
-        vk_n = 0x4E
-        if not user32.RegisterHotKey(None, hotkey_id, MOD_CONTROL | MOD_ALT, vk_n):
-            return
-        msg = wintypes.MSG()
-        try:
-            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
-                if msg.message == WM_HOTKEY and msg.wParam == hotkey_id:
-                    on_trigger()
-        finally:
-            user32.UnregisterHotKey(None, hotkey_id)
-
-    threading.Thread(target=_loop, daemon=True).start()

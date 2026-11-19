@@ -1,11 +1,9 @@
-"""Real-time Windows WASAPI Loopback audio spectrum, beat/BPM & waveform analyzer."""
+"""Real-time Windows WASAPI Loopback audio spectrum analyzer with auto-gain."""
 
 from __future__ import annotations
 
 import sys
 import threading
-import time
-from collections import deque
 from typing import List
 
 import numpy as np
@@ -21,17 +19,14 @@ if sys.platform == "win32":
 
 
 class AudioReactiveAnalyzer:
-    """Captures system loopback audio on Windows and computes 32-band FFT, waveform, beat & BPM."""
+    """Captures system loopback audio on Windows and computes a 32-band AGC-normalized FFT spectrum."""
 
     def __init__(self, num_bands: int = 32) -> None:
         self.num_bands = num_bands
         self._lock = threading.Lock()
         self._bands: List[float] = [0.0] * num_bands
-        self._waveform: List[float] = [0.0] * 32
         self._bass: float = 0.0
         self._energy: float = 0.0
-        self._beat: bool = False
-        self._bpm: int = 0
         self._active: bool = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -73,9 +68,6 @@ class AudioReactiveAnalyzer:
 
             window = np.hanning(chunk)
             running_peak = 0.25
-            bass_history: deque[float] = deque(maxlen=24)
-            beat_times: deque[float] = deque(maxlen=10)
-            last_beat_ts = 0.0
 
             while not self._stop_event.is_set():
                 raw = stream.read(chunk, exception_on_overflow=False)
@@ -85,12 +77,8 @@ class AudioReactiveAnalyzer:
                 if len(samples) != chunk:
                     continue
 
-                norm_samples = samples / 32768.0
-                # Downsample 32-point oscilloscope trace
-                step = chunk // 32
-                wave_pts = [float(np.clip(norm_samples[i * step] * 2.5, -1.0, 1.0)) for i in range(32)]
-
-                fft = np.abs(np.fft.rfft(norm_samples * window))
+                samples = (samples / 32768.0) * window
+                fft = np.abs(np.fft.rfft(samples))
                 freqs = np.fft.rfftfreq(chunk, 1.0 / rate)
 
                 band_edges = np.geomspace(35, min(12000, rate / 2 - 1), self.num_bands + 1)
@@ -106,45 +94,22 @@ class AudioReactiveAnalyzer:
                 else:
                     running_peak = max(0.08, running_peak * 0.992)
 
-                new_bands = [min(1.0, float(np.sqrt(v / running_peak))) for v in raw_bands]
+                new_bands = [
+                    min(1.0, float(np.sqrt(v / running_peak))) for v in raw_bands
+                ]
 
                 bass_raw = float(np.max(new_bands[:6])) if new_bands else 0.0
                 energy = float(np.mean(new_bands))
 
-                # Real-time beat / onset detection
-                avg_bass = float(np.mean(bass_history)) if bass_history else bass_raw
-                bass_history.append(bass_raw)
-                now = time.monotonic()
-                is_beat = False
-                if bass_raw > max(0.42, avg_bass * 1.28) and (now - last_beat_ts) > 0.28:
-                    is_beat = True
-                    last_beat_ts = now
-                    beat_times.append(now)
-
-                bpm = 0
-                if len(beat_times) >= 4:
-                    intervals = [
-                        beat_times[i] - beat_times[i - 1]
-                        for i in range(1, len(beat_times))
-                        if 0.30 <= (beat_times[i] - beat_times[i - 1]) <= 1.25
-                    ]
-                    if intervals:
-                        med = float(np.median(intervals))
-                        bpm = int(round(max(60.0, min(185.0, 60.0 / med))))
-
                 with self._lock:
                     for i in range(self.num_bands):
                         self._bands[i] = self._bands[i] * 0.35 + new_bands[i] * 0.65
-                    self._waveform = wave_pts
+                    # Fast attack, smooth decay for punchy bass swells
                     if bass_raw > self._bass:
                         self._bass = self._bass * 0.25 + bass_raw * 0.75
                     else:
                         self._bass = self._bass * 0.72 + bass_raw * 0.28
                     self._energy = self._energy * 0.45 + energy * 0.55
-                    if is_beat:
-                        self._beat = True
-                    if bpm > 0:
-                        self._bpm = bpm
 
             stream.stop_stream()
             stream.close()
@@ -154,14 +119,9 @@ class AudioReactiveAnalyzer:
 
     def get_spectrum(self) -> dict:
         with self._lock:
-            beat_fired = self._beat
-            self._beat = False
             return {
                 "live": self._active,
                 "bands": list(self._bands),
-                "waveform": list(self._waveform),
                 "bass": self._bass,
                 "energy": self._energy,
-                "beat": beat_fired,
-                "bpm": self._bpm,
             }
