@@ -61,7 +61,6 @@ def set_startup_enabled(enabled: bool, base_dir: Path) -> bool:
 def _create_tray_icon() -> "Image.Image":
     img = Image.new("RGBA", (64, 64), (8, 8, 12, 255))
     draw = ImageDraw.Draw(img)
-    # Minimal constellation star glyph
     pts = [(16, 44), (28, 22), (44, 34), (50, 14)]
     draw.line(pts, fill=(235, 240, 255, 210), width=2)
     for x, y in pts:
@@ -71,7 +70,7 @@ def _create_tray_icon() -> "Image.Image":
 
 
 class TrayManager:
-    """Runs pystray icon on a daemon thread for live theme, offset, startup, and quit control."""
+    """Runs pystray icon on a daemon thread for live theme, visual toggles, eco, and quit."""
 
     def __init__(
         self,
@@ -107,6 +106,16 @@ class TrayManager:
     def _is_theme(self, theme: str):
         return lambda _item: self.get_config().get("theme", "adaptive") == theme
 
+    def _toggle_bool(self, key: str, default: bool = True):
+        def _handler(_icon, _item):
+            cur = bool(self.get_config().get(key, default))
+            self.update_config({key: not cur})
+
+        return _handler
+
+    def _is_bool(self, key: str, default: bool = True):
+        return lambda _item: bool(self.get_config().get(key, default))
+
     def _adjust_offset(self, delta: int | None):
         def _handler(_icon, _item):
             cur = int(self.get_config().get("lyrics_offset_ms", 0))
@@ -135,13 +144,21 @@ class TrayManager:
             pystray.MenuItem("Geç (+250 ms)", self._adjust_offset(250)),
         )
         menu = pystray.Menu(
+            pystray.MenuItem("Ayarlar Paneli (S)", self._toggle_bool("show_settings", False), checked=self._is_bool("show_settings", False)),
             pystray.MenuItem("Tema", theme_menu),
             pystray.MenuItem("Söz Senkronu", offset_menu),
-            pystray.MenuItem(
-                "Windows ile Başlat",
-                self._toggle_startup,
-                checked=lambda _item: is_startup_enabled(),
-            ),
+            pystray.MenuItem("Aurora Kuzey Işıkları", self._toggle_bool("show_aurora", True), checked=self._is_bool("show_aurora", True)),
+            pystray.MenuItem("Alt Cam Ekolayzır", self._toggle_bool("show_equalizer", True), checked=self._is_bool("show_equalizer", True)),
+            pystray.MenuItem("Hava Durumu Rozeti", self._toggle_bool("show_weather", True), checked=self._is_bool("show_weather", True)),
+            pystray.MenuItem("Odak / Pomodoro (P)", self._toggle_bool("show_pomodoro", False), checked=self._is_bool("show_pomodoro", False)),
+            pystray.MenuItem("Türkçe Söz Çevirisi", self._toggle_bool("auto_translate", True), checked=self._is_bool("auto_translate", True)),
+            pystray.MenuItem("HUD Telemetri (H)", self._toggle_bool("show_hud", True), checked=self._is_bool("show_hud", True)),
+            pystray.MenuItem("3D Galaksi (N)", self._toggle_bool("show_nebula", True), checked=self._is_bool("show_nebula", True)),
+            pystray.MenuItem("Manyetik Parçacık Fiziği", self._toggle_bool("magnetic_particles", True), checked=self._is_bool("magnetic_particles", True)),
+            pystray.MenuItem("Auto-Eco (Oyun Modu)", self._toggle_bool("auto_eco", True), checked=self._is_bool("auto_eco", True)),
+            pystray.MenuItem("Efektleri Duraklat (Ctrl+Alt+N)", self._toggle_bool("paused_visuals", False), checked=self._is_bool("paused_visuals", False)),
+            pystray.MenuItem("Çoklu Monitör (Yeniden Başlat)", self._toggle_bool("multi_monitor", False), checked=self._is_bool("multi_monitor", False)),
+            pystray.MenuItem("Windows ile Başlat", self._toggle_startup, checked=lambda _item: is_startup_enabled()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Çıkış", self._quit_clicked),
         )

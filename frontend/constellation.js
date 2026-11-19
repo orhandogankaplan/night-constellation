@@ -1,11 +1,11 @@
 /**
- * Night Constellation Engine — Cinema-Grade 60fps Renderer
- *  1) Deep-sky twinkling starfield with mouse parallax + rare shooting stars
- *  2) Adaptive album-art color palette + 3 built-in theme presets
- *  3) Punchy, clearly visible bass-swelling perimeter glow + gliding edge light pulses
- *  4) Curved Black-Panther-style glowing claws/fangs framing the top clock
- *  5) Silky snake-like multi-layered Bezier radial wave + orbiting starlight particles around circular album art
- *  6) Constellation node-graph synced lyrics with star-flare target reticle
+ * Night Constellation Engine — High-FPS (60-144Hz) Cinema Renderer
+ *  1) Delta-time normalized silky animations (smooth reticle glide, shooting line beams, word bloom)
+ *  2) Time-of-Day dynamic sky + Night Eye-Care Warm Amber Shift
+ *  3) Aurora Borealis flowing sky curtains + 3D Particle Galaxy (Nebula) with Magnetic Physics
+ *  4) Switchable Particle Weather: Stars / Gentle Snow / Matrix Digital Rain
+ *  5) 3D Orbital Saturn Rings + Beat Shockwaves + Bottom Glass Equalizer
+ *  6) Constellation node-graph synced lyrics with 4-point star-flare reticle (matching reference)
  */
 
 const THEME_PRESETS = {
@@ -33,35 +33,48 @@ class NightConstellationRenderer {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     this.nodes = [];
+    this.lines = [];
     this.trackKey = "";
     this.camX = 0;
     this.camY = 0;
     this.targetCamX = 0;
     this.targetCamY = 0;
 
+    // Smooth gliding reticle state
+    this.reticleX = 0;
+    this.reticleY = 0;
+    this.lastNowSec = 0;
+
     this.smoothBass = 0;
     this.smoothEnergy = 0;
     this.smoothBands = new Array(32).fill(0);
 
-    // Adaptive RGB accent color (smoothly interpolated)
     this.adaptiveRGB = [255, 250, 236];
     this.currentRGB = [255, 250, 236];
 
-    // Mouse parallax state
+    this.mouseX = window.innerWidth * 0.5;
+    this.mouseY = window.innerHeight * 0.5;
     this.mouseNormX = 0;
     this.mouseNormY = 0;
     this.parallaxX = 0;
     this.parallaxY = 0;
 
-    this.stars = this._createStarfield(95);
+    this.stars = this._createStarfield(90);
+    this.snowflakes = this._createSnow(70);
+    this.matrixDrops = this._createMatrixDrops(42);
+    this.nebula = this._createNebula(140);
+    this.nebulaAngle = 0;
     this.shootingStars = [];
     this.nextShootAt = 4.0;
+    this.shockwaves = [];
 
-    this.orbitParticles = this._createOrbitParticles(24);
+    this.orbitParticles = this._createOrbitParticles(22);
 
     this.resize();
     window.addEventListener("resize", () => this.resize());
     window.addEventListener("mousemove", (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
       this.mouseNormX = e.clientX / Math.max(1, this.width) - 0.5;
       this.mouseNormY = e.clientY / Math.max(1, this.height) - 0.5;
     });
@@ -92,6 +105,11 @@ class NightConstellationRenderer {
     }
   }
 
+  triggerShockwave() {
+    this.shockwaves.push({ r: 74, alpha: 0.78 });
+    if (this.shockwaves.length > 6) this.shockwaves.shift();
+  }
+
   _rgba(alpha, rgb = this.currentRGB) {
     return `rgba(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])}, ${alpha})`;
   }
@@ -102,13 +120,61 @@ class NightConstellationRenderer {
       list.push({
         x: Math.random(),
         y: Math.random(),
-        r: 0.5 + Math.random() * 1.4,
+        r: 0.5 + Math.random() * 1.3,
         depth: 0.4 + Math.random() * 0.9,
-        baseAlpha: 0.14 + Math.random() * 0.45,
+        baseAlpha: 0.14 + Math.random() * 0.42,
         speed: 0.7 + Math.random() * 2.2,
         phase: Math.random() * Math.PI * 2,
         driftX: (Math.random() - 0.5) * 0.0025,
         driftY: (Math.random() - 0.5) * 0.0018,
+      });
+    }
+    return list;
+  }
+
+  _createSnow(count) {
+    const list = [];
+    for (let i = 0; i < count; i++) {
+      list.push({
+        x: Math.random(),
+        y: Math.random(),
+        r: 1.0 + Math.random() * 2.4,
+        speedY: 0.018 + Math.random() * 0.032,
+        swayAmp: 0.008 + Math.random() * 0.015,
+        phase: Math.random() * Math.PI * 2,
+        alpha: 0.25 + Math.random() * 0.5,
+      });
+    }
+    return list;
+  }
+
+  _createMatrixDrops(count) {
+    const list = [];
+    for (let i = 0; i < count; i++) {
+      list.push({
+        xFrac: (i + 0.5) / count,
+        y: Math.random(),
+        speed: 0.14 + Math.random() * 0.22,
+        len: 8 + Math.floor(Math.random() * 10),
+      });
+    }
+    return list;
+  }
+
+  _createNebula(count) {
+    const list = [];
+    for (let i = 0; i < count; i++) {
+      const arm = i % 3;
+      const dist = 80 + Math.random() * 520;
+      const angle = (arm * Math.PI * 2) / 3 + dist * 0.005 + (Math.random() - 0.5) * 0.7;
+      list.push({
+        x: Math.cos(angle) * dist,
+        y: (Math.random() - 0.5) * 140,
+        z: Math.sin(angle) * dist,
+        ox: 0,
+        oy: 0,
+        size: 1.0 + Math.random() * 2.1,
+        alpha: 0.25 + Math.random() * 0.55,
       });
     }
     return list;
@@ -146,6 +212,7 @@ class NightConstellationRenderer {
   }
 
   setLyrics(trackKey, lines) {
+    this.lines = lines || [];
     if (trackKey === this.trackKey && this.nodes.length > 0) return;
     this.trackKey = trackKey;
     this.nodes = [];
@@ -159,29 +226,29 @@ class NightConstellationRenderer {
     lines.forEach((line, lineIdx) => {
       const words = line.words || [];
       words.forEach((w, wordIdx) => {
-        const angle = (rand() - 0.5) * 1.35;
-        const dist = wordIdx === 0 && lineIdx > 0 ? 200 + rand() * 75 : 130 + rand() * 80;
+        const angle = (rand() - 0.5) * 1.45;
+        const dist = wordIdx === 0 && lineIdx > 0 ? 210 + rand() * 85 : 135 + rand() * 85;
         const dirSign = lineIdx % 2 === 0 ? 1 : -1;
 
-        cursorX += Math.cos(angle) * dist * (wordIdx === 0 ? 0.65 : dirSign * 0.9);
-        cursorY += Math.sin(angle) * dist * 0.68 + (wordIdx === 0 ? 52 : 0);
+        cursorX += Math.cos(angle) * dist * (wordIdx === 0 ? 0.68 : dirSign * 0.92);
+        cursorY += Math.sin(angle) * dist * 0.72 + (wordIdx === 0 ? 48 : 0);
 
         if (Math.abs(cursorY) > 155) {
-          cursorY *= 0.62;
+          cursorY *= 0.6;
         }
 
         for (let tries = 0; tries < 6; tries++) {
           let tooClose = false;
           for (let k = Math.max(0, this.nodes.length - 8); k < this.nodes.length; k++) {
             const prev = this.nodes[k];
-            if (Math.hypot(cursorX - prev.x, cursorY - prev.y) < 88) {
+            if (Math.hypot(cursorX - prev.x, cursorY - prev.y) < 92) {
               tooClose = true;
               break;
             }
           }
           if (!tooClose) break;
-          cursorX += (rand() > 0.5 ? 1 : -1) * 58;
-          cursorY += (rand() - 0.5) * 64;
+          cursorX += (rand() > 0.5 ? 1 : -1) * 62;
+          cursorY += (rand() - 0.5) * 68;
         }
 
         this.nodes.push({
@@ -193,6 +260,7 @@ class NightConstellationRenderer {
           endMs: line.end_ms || w.time_ms + 600,
           x: cursorX,
           y: cursorY,
+          animScale: 0,
         });
       });
     });
@@ -202,63 +270,104 @@ class NightConstellationRenderer {
       this.camY = this.nodes[0].y;
       this.targetCamX = this.camX;
       this.targetCamY = this.camY;
+      this.reticleX = this.nodes[0].x;
+      this.reticleY = this.nodes[0].y;
     }
   }
 
-  render(nowSec, positionMs, isPlaying, hasLyrics, audioState, config) {
-    const rawBass = audioState?.bass || 0;
-    const rawEnergy = audioState?.energy || 0;
-    const rawBands = audioState?.bands || [];
+  _getSkyPalette() {
+    const hr = new Date().getHours();
+    if (hr >= 5 && hr < 8) return ["#111726", "#070910", "#030408"];
+    if (hr >= 17 && hr < 20) return ["#1a1019", "#0a070c", "#040306"];
+    return ["#0a0b10", "#050508", "#020204"];
+  }
 
-    const rhythmFloor = isPlaying ? 0.16 + 0.12 * Math.sin(nowSec * 4.2) : 0;
+  render(nowSec, positionMs, isPlaying, hasLyrics, audioState, config) {
+    const dt = this.lastNowSec > 0 ? Math.min(0.05, Math.max(0.001, nowSec - this.lastNowSec)) : 1 / 60;
+    this.lastNowSec = nowSec;
+
+    const pausedVisuals = Boolean(config?.paused_visuals);
+    const rawBass = pausedVisuals ? 0 : audioState?.bass || 0;
+    const rawEnergy = pausedVisuals ? 0 : audioState?.energy || 0;
+    const rawBands = pausedVisuals ? [] : audioState?.bands || [];
+
+    if (!pausedVisuals && audioState?.beat) {
+      this.triggerShockwave();
+    }
+
+    const rhythmFloor = !pausedVisuals && isPlaying ? 0.16 + 0.12 * Math.sin(nowSec * 4.2) : 0;
     const targetBass = Math.max(rawBass, rhythmFloor);
 
-    if (targetBass > this.smoothBass) {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.48;
-    } else {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.16;
-    }
+    const bassRate = targetBass > this.smoothBass ? 18 : 7;
+    this.smoothBass += (targetBass - this.smoothBass) * (1 - Math.exp(-bassRate * dt));
+    this.smoothEnergy += (Math.max(rawEnergy, rhythmFloor * 0.8) - this.smoothEnergy) * (1 - Math.exp(-12 * dt));
 
-    this.smoothEnergy += (Math.max(rawEnergy, rhythmFloor * 0.8) - this.smoothEnergy) * 0.28;
+    const bandLerp = 1 - Math.exp(-15 * dt);
     for (let i = 0; i < 32; i++) {
-      const target = Math.max(rawBands[i] || 0, isPlaying ? 0.1 + 0.08 * Math.sin(nowSec * 3.4 + i * 0.5) : 0);
-      this.smoothBands[i] += (target - this.smoothBands[i]) * 0.3;
+      const target = Math.max(
+        rawBands[i] || 0,
+        !pausedVisuals && isPlaying ? 0.1 + 0.08 * Math.sin(nowSec * 3.4 + i * 0.5) : 0
+      );
+      this.smoothBands[i] += (target - this.smoothBands[i]) * bandLerp;
     }
 
-    // Smoothly interpolate theme color
     const themeName = config?.theme || "adaptive";
-    const targetRGB =
+    let targetRGB =
       themeName === "adaptive"
-        ? this.adaptiveRGB
-        : THEME_PRESETS[themeName] || THEME_PRESETS.champagne;
-    for (let c = 0; c < 3; c++) {
-      this.currentRGB[c] += (targetRGB[c] - this.currentRGB[c]) * 0.06;
+        ? [...this.adaptiveRGB]
+        : [...(THEME_PRESETS[themeName] || THEME_PRESETS.champagne)];
+
+    if (config?.night_amber) {
+      targetRGB = [
+        Math.min(255, Math.round(targetRGB[0] * 1.0)),
+        Math.round(targetRGB[1] * 0.78),
+        Math.round(targetRGB[2] * 0.52),
+      ];
     }
 
-    // Smooth mouse parallax
-    this.parallaxX += (this.mouseNormX * 26 - this.parallaxX) * 0.06;
-    this.parallaxY += (this.mouseNormY * 18 - this.parallaxY) * 0.06;
+    const rgbLerp = 1 - Math.exp(-4 * dt);
+    for (let c = 0; c < 3; c++) {
+      this.currentRGB[c] += (targetRGB[c] - this.currentRGB[c]) * rgbLerp;
+    }
 
-    const glowIntensity = config?.edge_glow_intensity ?? 1.0;
+    const parLerp = 1 - Math.exp(-5 * dt);
+    this.parallaxX += (this.mouseNormX * 26 - this.parallaxX) * parLerp;
+    this.parallaxY += (this.mouseNormY * 18 - this.parallaxY) * parLerp;
+
+    const glowIntensity = pausedVisuals ? 0.25 : config?.edge_glow_intensity ?? 1.0;
+    const showNebula = !pausedVisuals && (config?.show_nebula ?? true);
+    const magneticOn = !pausedVisuals && (config?.magnetic_particles ?? true);
+    const showAurora = !pausedVisuals && (config?.show_aurora ?? true);
+    const showEq = !pausedVisuals && (config?.show_equalizer ?? true);
+    const showOrbital = !pausedVisuals && (config?.orbital_rings ?? true);
+    const particleMode = config?.particle_mode || "stars";
+    const showTranslation = Boolean(config?.auto_translate ?? true);
 
     this._renderBackground(
       nowSec,
+      dt,
       this.smoothBass,
       this.smoothEnergy,
-      isPlaying,
-      glowIntensity
+      this.smoothBands,
+      isPlaying && !pausedVisuals,
+      glowIntensity,
+      showNebula,
+      magneticOn,
+      showAurora,
+      showEq,
+      particleMode
     );
-    this._renderFluidRadial(nowSec, this.smoothBands, isPlaying, this.smoothBass);
+    this._renderFluidRadial(nowSec, this.smoothBands, isPlaying && !pausedVisuals, this.smoothBass, showOrbital);
 
     if (this.centerArtRingEl) {
-      const scale = isPlaying ? 1 + this.smoothBass * 0.12 : 1;
-      const glow = isPlaying ? Math.round(22 + this.smoothBass * 48) : 16;
+      const scale = isPlaying && !pausedVisuals ? 1 + this.smoothBass * 0.12 : 1;
+      const glow = isPlaying && !pausedVisuals ? Math.round(22 + this.smoothBass * 48) : 16;
       this.centerArtRingEl.style.transform = `scale(${scale.toFixed(3)})`;
       this.centerArtRingEl.style.boxShadow = `0 0 ${glow}px ${this._rgba((0.24 + this.smoothBass * 0.45).toFixed(2))}, inset 0 0 18px rgba(0,0,0,0.65)`;
     }
 
-    if (hasLyrics && this.nodes.length > 0) {
-      this._renderConstellation(nowSec, positionMs, this.smoothBass);
+    if (hasLyrics && !pausedVisuals && this.nodes.length > 0) {
+      this._renderConstellation(nowSec, dt, positionMs, this.smoothBass, showTranslation);
     } else {
       this.conCtx.clearRect(0, 0, this.conCanvas.width, this.conCanvas.height);
     }
@@ -273,22 +382,91 @@ class NightConstellationRenderer {
     return { x: 0, y: h - (dist - (2 * w + h)) };
   }
 
-  _renderBackground(nowSec, bass, energy, isPlaying, glowIntensity) {
-    const ctx = this.bgCtx;
-    const w = this.width;
-    const h = this.height;
+  _renderAurora(ctx, w, h, nowSec, energy) {
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (let r = 0; r < 2; r++) {
+      const baseY = h * (0.14 + r * 0.09);
+      const grad = ctx.createLinearGradient(0, baseY - 60, 0, baseY + 120);
+      grad.addColorStop(0, this._rgba(0));
+      grad.addColorStop(0.45, this._rgba((0.05 + energy * 0.08).toFixed(3)));
+      grad.addColorStop(1, this._rgba(0));
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, baseY + 120);
+      for (let x = 0; x <= w; x += 72) {
+        const y =
+          baseY +
+          Math.sin((x / w) * Math.PI * 2.5 + nowSec * (0.28 + r * 0.12) + r * 2) * (28 + energy * 24);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, baseY + 120);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  _renderBottomEqualizer(ctx, w, h, bands, isPlaying, glowIntensity) {
+    const barCount = 48;
+    const totalW = Math.min(w * 0.44, 620);
+    const startX = (w - totalW) * 0.5;
+    const step = totalW / barCount;
+    const barW = Math.max(3, step * 0.52);
 
     ctx.save();
-    ctx.scale(this.dpr, this.dpr);
+    for (let i = 0; i < barCount; i++) {
+      const mirrorIdx = i < barCount / 2 ? barCount / 2 - 1 - i : i - barCount / 2;
+      const bandIdx = Math.floor((mirrorIdx / (barCount / 2)) * 31);
+      const amp = bands[bandIdx] || 0;
+      const barH = isPlaying ? 4 + amp * 42 : 3;
+      const x = startX + i * step + (step - barW) * 0.5;
+      const y = h - barH - 6;
 
-    const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
-    bgGrad.addColorStop(0, "#0a0b10");
-    bgGrad.addColorStop(0.6, "#050508");
-    bgGrad.addColorStop(1, "#020204");
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = this._rgba(Math.min(0.85, (0.22 + amp * 0.62) * glowIntensity));
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(x, y, barW, barH, 3);
+      } else {
+        ctx.rect(x, y, barW, barH);
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
-    // 1. Twinkling deep-sky starfield with mouse parallax
+  _renderParticles(ctx, w, h, nowSec, energy, mode) {
+    if (mode === "snow") {
+      for (const fl of this.snowflakes) {
+        const y = ((fl.y + nowSec * fl.speedY) % 1) * h;
+        const x = ((fl.x + Math.sin(nowSec * 0.9 + fl.phase) * fl.swayAmp) % 1) * w;
+        ctx.fillStyle = this._rgba((fl.alpha * (0.7 + energy * 0.4)).toFixed(3));
+        ctx.beginPath();
+        ctx.arc(x, y, fl.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+
+    if (mode === "matrix") {
+      ctx.font = '12px "Consolas", monospace';
+      const chars = "01アイウエオカキクケコ";
+      for (const d of this.matrixDrops) {
+        const headY = ((d.y + nowSec * d.speed) % 1.15) * h;
+        const x = d.xFrac * w;
+        for (let k = 0; k < d.len; k++) {
+          const cy = headY - k * 14;
+          if (cy < 0 || cy > h) continue;
+          const alpha = (1 - k / d.len) * (0.35 + energy * 0.4);
+          ctx.fillStyle = this._rgba(alpha.toFixed(3));
+          const ch = chars[Math.floor((nowSec * 6 + k + d.xFrac * 50) % chars.length)];
+          ctx.fillText(ch, x, cy);
+        }
+      }
+      return;
+    }
+
     for (const s of this.stars) {
       const sx = (((s.x + nowSec * s.driftX) % 1) + 1) % 1 * w - this.parallaxX * s.depth;
       const sy = (((s.y + nowSec * s.driftY) % 1) + 1) % 1 * h - this.parallaxY * s.depth;
@@ -299,8 +477,72 @@ class NightConstellationRenderer {
       ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
 
-    // Occasional shooting star
+  _renderBackground(nowSec, dt, bass, energy, bands, isPlaying, glowIntensity, showNebula, magneticOn, showAurora, showEq, particleMode) {
+    const ctx = this.bgCtx;
+    const w = this.width;
+    const h = this.height;
+
+    ctx.save();
+    ctx.scale(this.dpr, this.dpr);
+
+    const [c0, c1, c2] = this._getSkyPalette();
+    const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
+    bgGrad.addColorStop(0, c0);
+    bgGrad.addColorStop(0.6, c1);
+    bgGrad.addColorStop(1, c2);
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    if (showAurora) {
+      this._renderAurora(ctx, w, h, nowSec, energy);
+    }
+
+    if (showNebula) {
+      this.nebulaAngle += (0.12 + (isPlaying ? bass * 0.72 : 0.06)) * dt;
+      const cosA = Math.cos(this.nebulaAngle);
+      const sinA = Math.sin(this.nebulaAngle);
+      const fov = 420;
+      const cx = w * 0.5 - this.parallaxX * 0.6;
+      const cy = h * 0.52 - this.parallaxY * 0.6;
+
+      for (const n of this.nebula) {
+        const rx = n.x * cosA - n.z * sinA;
+        const rz = n.x * sinA + n.z * cosA + 520;
+        if (rz <= 20) continue;
+        const scale = fov / rz;
+        let px = cx + rx * scale;
+        let py = cy + n.y * scale;
+
+        if (magneticOn) {
+          const dx = this.mouseX - px;
+          const dy = this.mouseY - py;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 175 && dist > 4) {
+            const pull = (1 - dist / 175) * 0.35;
+            n.ox += (dx * pull - dy * pull * 0.65 - n.ox) * 0.14;
+            n.oy += (dy * pull + dx * pull * 0.65 - n.oy) * 0.14;
+          } else {
+            n.ox *= 0.92;
+            n.oy *= 0.92;
+          }
+          px += n.ox;
+          py += n.oy;
+        }
+
+        if (px < -10 || px > w + 10 || py < -10 || py > h + 10) continue;
+
+        const alpha = n.alpha * Math.min(1, scale * 1.1) * (0.35 + energy * 0.65);
+        ctx.fillStyle = this._rgba(alpha.toFixed(3));
+        ctx.beginPath();
+        ctx.arc(px, py, n.size * scale * (1 + bass * 0.4), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    this._renderParticles(ctx, w, h, nowSec, energy, particleMode);
+
     if (nowSec > this.nextShootAt) {
       this.nextShootAt = nowSec + 5.5 + Math.random() * 6.0;
       this.shootingStars.push({
@@ -314,7 +556,7 @@ class NightConstellationRenderer {
     }
     for (let i = this.shootingStars.length - 1; i >= 0; i--) {
       const sh = this.shootingStars[i];
-      sh.life += 1 / 60;
+      sh.life += dt;
       if (sh.life >= sh.maxLife) {
         this.shootingStars.splice(i, 1);
         continue;
@@ -337,10 +579,12 @@ class NightConstellationRenderer {
       ctx.stroke();
     }
 
-    // 2. Curved Black-Panther-style glowing claws/fangs framing the top clock
     this._renderCurvedClaws(ctx, w, h, nowSec, bass, isPlaying, glowIntensity);
 
-    // 3. Clearly visible, punchy bass-swelling perimeter glow
+    if (showEq) {
+      this._renderBottomEqualizer(ctx, w, h, bands, isPlaying, glowIntensity);
+    }
+
     const bassCurve = Math.pow(bass, 0.85);
     const swellDepth = isPlaying ? (16 + bassCurve * 140) * glowIntensity : 10 * glowIntensity;
     const swellAlpha = isPlaying ? Math.min(0.68, (0.14 + bassCurve * 0.54) * glowIntensity) : 0.06 * glowIntensity;
@@ -373,7 +617,6 @@ class NightConstellationRenderer {
     ctx.fillStyle = rightG;
     ctx.fillRect(w - swellDepth, 0, swellDepth, h);
 
-    // Flush 0px neon rim that swells visibly in thickness & bloom on beat
     const rimAlpha = isPlaying
       ? Math.min(1.0, (0.45 + bassCurve * 0.55) * glowIntensity)
       : 0.25 * glowIntensity;
@@ -385,13 +628,11 @@ class NightConstellationRenderer {
     ctx.shadowBlur = isPlaying ? 18 + bassCurve * 55 : 10;
     ctx.strokeRect(0, 0, w, h);
 
-    // Pure bright core
     ctx.shadowBlur = isPlaying ? 8 + bassCurve * 24 : 5;
     ctx.lineWidth = isPlaying ? 1.6 + bassCurve * 4.5 : 1.1;
     ctx.strokeStyle = `rgba(255, 255, 255, ${rimAlpha})`;
     ctx.strokeRect(0, 0, w, h);
 
-    // Smooth glowing light pulses gliding strictly along the 4 edges
     ctx.globalCompositeOperation = "screen";
     const sweepCount = 3;
     for (let s = 0; s < sweepCount; s++) {
@@ -442,8 +683,6 @@ class NightConstellationRenderer {
 
       ctx.save();
       ctx.fillStyle = grad;
-      ctx.shadowColor = this._rgba(alpha * 0.75);
-      ctx.shadowBlur = 14 + bass * 16;
       ctx.beginPath();
       ctx.moveTo(baseX - halfW, baseY);
       ctx.quadraticCurveTo(curveX - halfW * 0.45, curveY, tipX, tipY);
@@ -461,7 +700,7 @@ class NightConstellationRenderer {
     }
   }
 
-  _renderFluidRadial(nowSec, bands, isPlaying, bass) {
+  _renderFluidRadial(nowSec, bands, isPlaying, bass, showOrbital) {
     const ctx = this.radCtx;
     const size = 340;
     const cx = size / 2;
@@ -471,6 +710,35 @@ class NightConstellationRenderer {
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
+
+    if (showOrbital) {
+      for (let r = 0; r < 2; r++) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((r === 0 ? 0.35 : -0.45) + nowSec * (r === 0 ? 0.12 : -0.09));
+        ctx.strokeStyle = this._rgba((isPlaying ? 0.22 + bass * 0.25 : 0.1).toFixed(3));
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, baseR + 48 + r * 14, (baseR + 48 + r * 14) * 0.36, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const sw = this.shockwaves[i];
+      sw.r += 3.2;
+      sw.alpha *= 0.93;
+      if (sw.alpha < 0.03 || sw.r > 168) {
+        this.shockwaves.splice(i, 1);
+        continue;
+      }
+      ctx.strokeStyle = this._rgba(sw.alpha.toFixed(3));
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(cx, cy, sw.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     const pts = 72;
     const buildRingPoints = (phaseShift, ampScale, radiusOffset) => {
@@ -570,7 +838,7 @@ class NightConstellationRenderer {
     ctx.restore();
   }
 
-  _renderConstellation(nowSec, positionMs, bass) {
+  _renderConstellation(nowSec, dt, positionMs, bass, showTranslation) {
     const ctx = this.conCtx;
     const w = this.width;
     const h = this.height;
@@ -592,37 +860,44 @@ class NightConstellationRenderer {
     this.targetCamX = activeNode.x;
     this.targetCamY = activeNode.y;
 
-    this.camX += (this.targetCamX - this.camX) * 0.085;
-    this.camY += (this.targetCamY - this.camY) * 0.085;
+    // Delta-time smooth camera & gliding reticle
+    const camLerp = 1 - Math.exp(-5.5 * dt);
+    const retLerp = 1 - Math.exp(-14.0 * dt);
+    this.camX += (this.targetCamX - this.camX) * camLerp;
+    this.camY += (this.targetCamY - this.camY) * camLerp;
+    this.reticleX += (activeNode.x - this.reticleX) * retLerp;
+    this.reticleY += (activeNode.y - this.reticleY) * retLerp;
 
     const originX = w * 0.5 - this.camX - this.parallaxX * 0.5;
     const originY = h * 0.56 - this.camY - this.parallaxY * 0.5;
 
-    const windowStart = Math.max(0, activeIdx - 8);
+    const windowStart = Math.max(0, activeIdx - 9);
     const windowEnd = Math.min(this.nodes.length - 1, activeIdx + 6);
 
+    // Draw crisp geometric constellation edges + animated shooting beam to active node
     for (let i = windowStart; i < windowEnd; i++) {
       const a = this.nodes[i];
       const b = this.nodes[i + 1];
       const distFromActive = Math.max(Math.abs(i - activeIdx), Math.abs(i + 1 - activeIdx));
-      const fade = Math.max(0.08, 1 - distFromActive / 8.5);
+      const fade = Math.max(0.08, 1 - distFromActive / 9.0);
 
       const ax = originX + a.x;
       const ay = originY + a.y;
       const bx = originX + b.x;
       const by = originY + b.y;
 
-      ctx.strokeStyle = this._rgba(0.45 * fade);
-      ctx.lineWidth = i === activeIdx || i + 1 === activeIdx ? 1.5 : 1.0;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.52 * fade).toFixed(3)})`;
+      ctx.lineWidth = i + 1 === activeIdx ? 1.8 : 1.15;
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
       ctx.stroke();
 
-      if (i + 2 <= windowEnd && i % 3 === 0) {
+      // Secondary triangulation link for geometric constellation look (like q.jpeg & r.jpeg)
+      if (i + 2 <= windowEnd && i % 2 === 0) {
         const c = this.nodes[i + 2];
-        ctx.strokeStyle = this._rgba(0.16 * fade);
-        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.18 * fade).toFixed(3)})`;
+        ctx.lineWidth = 0.85;
         ctx.beginPath();
         ctx.moveTo(ax, ay);
         ctx.lineTo(originX + c.x, originY + c.y);
@@ -630,63 +905,88 @@ class NightConstellationRenderer {
       }
     }
 
+    // Draw nodes and smooth-scaled words
+    const scaleRate = 1 - Math.exp(-12 * dt);
     for (let i = windowStart; i <= windowEnd; i++) {
       const node = this.nodes[i];
       const nx = originX + node.x;
       const ny = originY + node.y;
       const isActive = i === activeIdx;
       const dist = Math.abs(i - activeIdx);
-      const alpha = isActive ? 1.0 : Math.max(0.14, 0.78 - dist * 0.11);
+      const alpha = isActive ? 1.0 : Math.max(0.16, 0.82 - dist * 0.11);
 
-      if (isActive) {
-        const pulse = 1 + 0.08 * Math.sin(nowSec * 5.0) + bass * 0.25;
-        const r = 16 * pulse;
+      node.animScale += ((isActive ? 1 : 0) - (node.animScale || 0)) * scaleRate;
 
-        ctx.save();
-        ctx.shadowColor = this._rgba(0.95);
-        ctx.shadowBlur = 18;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
-        ctx.lineWidth = 1.5;
+      // Small star dot at every node
+      ctx.fillStyle = `rgba(255, 255, 255, ${(alpha * 0.92).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(nx, ny, isActive ? 3.8 : 2.5, 0, Math.PI * 2);
+      ctx.fill();
 
-        ctx.beginPath();
-        ctx.arc(nx, ny, r, 0, Math.PI * 2);
-        ctx.stroke();
+      // Smoothly interpolated word size & glow (14px -> 32px)
+      const fontSize = Math.round(14 + node.animScale * 18);
+      const yOffset = 22 + node.animScale * 26;
+      const weight = node.animScale > 0.4 ? "700" : "500";
+      ctx.font = `${weight} ${fontSize}px "Segoe UI", "Inter", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = `rgba(255, 255, 255, ${(isActive ? 0.98 : alpha * 0.78).toFixed(3)})`;
+      if (node.animScale > 0.25) {
+        ctx.shadowColor = this._rgba((0.65 * node.animScale).toFixed(2));
+        ctx.shadowBlur = Math.round(16 * node.animScale);
+      }
+      ctx.fillText(node.text, nx, ny + yOffset);
+      ctx.shadowBlur = 0;
+    }
 
-        const tick = 8;
-        ctx.beginPath();
-        ctx.moveTo(nx - r - tick, ny);
-        ctx.lineTo(nx - r + 4, ny);
-        ctx.moveTo(nx + r - 4, ny);
-        ctx.lineTo(nx + r + tick, ny);
-        ctx.moveTo(nx, ny - r - tick);
-        ctx.lineTo(nx, ny - r + 4);
-        ctx.moveTo(nx, ny + r - 4);
-        ctx.lineTo(nx, ny + r + tick);
-        ctx.stroke();
+    // Gliding 4-point star-flare Target Reticle (matches e.jpeg, q.jpeg, r.jpeg, w.jpeg!)
+    const rx = originX + this.reticleX;
+    const ry = originY + this.reticleY;
+    const pulse = 1 + 0.06 * Math.sin(nowSec * 5.0) + bass * 0.18;
+    const r = 17 * pulse;
 
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(nx, ny, 4.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+    ctx.save();
+    ctx.shadowColor = "rgba(255, 255, 255, 0.95)";
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
+    ctx.lineWidth = 1.5;
 
-        ctx.font = '600 28px "Segoe UI", "Inter", sans-serif';
+    ctx.beginPath();
+    ctx.arc(rx, ry, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Extended crosshair lines
+    const ext = 8;
+    ctx.beginPath();
+    ctx.moveTo(rx - r - ext, ry);
+    ctx.lineTo(rx + r + ext, ry);
+    ctx.moveTo(rx, ry - r - ext);
+    ctx.lineTo(rx, ry + r + ext);
+    ctx.stroke();
+
+    // 4-point diamond star flare inside reticle
+    const flare = r * 0.78;
+    const waist = 2.6;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - flare);
+    ctx.quadraticCurveTo(rx + waist, ry - waist, rx + flare, ry);
+    ctx.quadraticCurveTo(rx + waist, ry + waist, rx, ry + flare);
+    ctx.quadraticCurveTo(rx - waist, ry + waist, rx - flare, ry);
+    ctx.quadraticCurveTo(rx - waist, ry - waist, rx, ry - flare);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    if (showTranslation && this.lines && activeNode) {
+      const activeLine = this.lines[activeNode.lineIdx];
+      if (activeLine && activeLine.tr) {
+        ctx.font = '400 15px "Segoe UI", "Inter", sans-serif';
         ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
-        ctx.shadowColor = this._rgba(0.5);
-        ctx.shadowBlur = 14;
-        ctx.fillText(node.text, nx, ny + 46);
+        ctx.fillStyle = this._rgba(0.8);
+        ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+        ctx.shadowBlur = 8;
+        ctx.fillText(activeLine.tr, w * 0.5, h * 0.84);
         ctx.shadowBlur = 0;
-      } else {
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.85})`;
-        ctx.beginPath();
-        ctx.arc(nx, ny, 2.6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.font = '400 14px "Segoe UI", "Inter", sans-serif';
-        ctx.textAlign = "center";
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.72})`;
-        ctx.fillText(node.text, nx, ny + 22);
       }
     }
 

@@ -1,33 +1,35 @@
 # Night Constellation — Windows Canlı Duvar Kağıdı, Ekran Koruyucu & Müzik Arayüzü
 
-Windows'ta müzik çalarken (Spotify, YouTube Music, Apple Music, tarayıcı vb.) masaüstü arka planını veya ekran koruyucuyu basla şişip inen neon çerçeveli, yıldızlı ve takımyıldızı şarkı sözlü canlı bir sahneye dönüştürür.
+Windows 10/11 masaüstünü veya ekran koruyucusunu gerçek zamanlı ses analizine duyarlı, MacBook kilit ekranı tarzı kalın saatli, 3D perspektif kapaklı ve takımyıldızı şarkı sözlü canlı bir gece sahnesine dönüştüren açık kaynaklı proje.
 
-## Özellikler
+## Öne Çıkan Özellikler
 
-* **Üç Çalışma Modu:**
-  * **Canlı Duvar Kağıdı (`wallpaper.bat` / `py main.py --wallpaper`):** Windows 10 ve Windows 11 (24H2+) masaüstü simgelerinin arkasına yerleşir.
-  * **Masaüstü / Standby Modu (`run.bat` / `py main.py --desktop`):** Tam ekran etkileşimli müzik ekranı olarak açılır.
-  * **Windows Ekran Koruyucu (`.scr`):** `/s`, `/c`, `/p` argümanlarını destekler.
-* **Albüm Kapağından Otomatik Renk Teması:** Şarkı değiştikçe kapağın baskın rengi çıkarılır; kenar ışıkları, pençeler ve yıldız parıltıları o renge yumuşakça geçer.
-* **Sistem Tepsisi (Tray) Menüsü:** Sağ alt sistem tepsisinden tek tıkla **Tema** (`Otomatik`, `Klasik Şampanya`, `Buz Mavisi`, `Kızıl Gece`), **Söz Senkronu (`-250 ms` / `+250 ms`)**, **Windows ile Başlat** ve **Çıkış** kontrolü.
-* **Yıldız Alanı & Fare Paralaksı:** Arka planda titreşen yıldızlar, kayan yıldızlar ve fare hareketine duyarlı derinlik efekti.
-* **Windows Medya (SMTC) + WASAPI Ses Analizi + LRCLIB:** Çalan şarkıyı, kapağını ve senkronize sözlerini otomatik çeker; otomatik kazançlı (AGC) bas algılayıcı ile her ses seviyesinde ritme tepki verir.
+* **Üç Çalışma Modu:** Canlı Duvar Kağıdı (`wallpaper.bat` / `--wallpaper`), Masaüstü Modu (`run.bat` / `--desktop`) ve Windows Ekran Koruyucu (`.scr`).
+* **MacBook Tarzı Saat & Tipografi Seçici:** Kalın ve uzun MacBook kilit ekranı saati, Klasik Serif ve Dijital Neon yazı tipi seçenekleri + saate göre otomatik selamlama / kişisel motto.
+* **Lüks Dinamik Medya Kapsülü & Plak Modu:** Cam efektli medya kartı, canlı mini ekolayzır çubukları, süre göstergesi, albüm kapağı ambient bulanık arka plan ve dönen plak (vinyl) animasyonu.
+* **3D Perspektifli Önceki / Sonraki Kapak Akışı:** Yerel geçmişten gelen gerçek kapaklarla dolu, tıklanabilir 3D yan kapak kartları.
+* **Görsel Efekt Motoru:** 3D Parçacık Galaksisi (Nebula), Manyetik Fare Fiziği, Aurora Kuzey Işıkları, Alt Cam Ekolayzır, Yıldız / Kar / Matrix modları, Beat Şok Dalgaları ve Gece Kehribar Göz Koruma Modu.
+* **Akıllı Masaüstü Araçları:** Anlık Hava Durumu rozeti, Pomodoro Odak Sayacı (`P`), HUD Telemetri (BPM, CPU, RAM, Pil/Şarj, Osiloskop), Türkçe Söz Çevirisi ve Tam Ekran Oyun Algılama (**Auto-Eco**).
+* **Sistem Tepsisi & Global Kısayol:** `Ctrl + Alt + N` ile herhangi bir uygulamadan efektleri duraklatma ve sağ alt tepsiden **Windows ile Başlat** kontrolü.
 
-## Kurulum ve Çalıştırma
+## Hızlı Kurulum
+
+Tek tıkla kurup başlatmak için `setup.bat` dosyasını çalıştırabilir veya terminalden:
 
 ```cmd
 py -m pip install -r requirements.txt
+wallpaper.bat
 ```
 
-* **Canlı Duvar Kağıdı olarak başlat:** `wallpaper.bat` (veya `py main.py --wallpaper`)
-* **Masaüstü Modunda başlat:** `run.bat` (veya `py main.py --desktop`)
-* **Ekran Koruyucu (`.scr`) derle:** `build_screensaver.bat`
+## Kısayollar
 
-## Kısayollar (Masaüstü Modu)
-
+* `S` — Canlı Ayarlar Panelini aç / kapat
 * `T` — Tema değiştir (`adaptive` / `champagne` / `cyber_ice` / `crimson_night`)
+* `P` — Pomodoro Odak Sayacını başlat / duraklat
+* `H` / `N` — HUD Telemetri / 3D Galaksi aç-kapat
 * `[` / `]` — Şarkı sözü senkronunu `-250 ms` / `+250 ms` kaydır
-* `D` — Demo modunu aç / kapat
-* `Space` — Oynat / Duraklat
-* `Sağ / Sol Ok` — Sonraki / Önceki şarkı
-* `Esc` veya `Q` — Çıkış
+* `Ctrl + Alt + N` — Herhangi bir oyundan/uygulamadan efektleri duraklat / devam ettir
+
+## Lisans
+
+Bu proje [MIT Lisansı](LICENSE) altında yayınlanmıştır.
