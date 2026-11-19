@@ -11,12 +11,9 @@ pyinstaller --noconfirm --onefile --windowed ^
     main.py
 
 if exist "dist\NightConstellation.exe" (
-    copy /Y "dist\NightConstellation.exe" "dist\NightConstellationWallpaper.exe" >nul
     copy /Y "dist\NightConstellation.exe" "dist\NightConstellation.scr" >nul
     echo.
-    echo Basarili! Uygulama: dist\NightConstellation.exe
-    echo Duvar kagidi uygulamasi: dist\NightConstellationWallpaper.exe
-    echo Ekran koruyucu: dist\NightConstellation.scr
+    echo Basarili! Ekran koruyucu olusturuldu: dist\NightConstellation.scr
     echo Yuklemek icin dosyaya sag tiklayip "Yukle" secenegine tiklayabilirsiniz.
 ) else (
     echo Derleme basarisiz oldu.

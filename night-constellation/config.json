@@ -1,0 +1,12 @@
+{
+  "locale": "tr-TR",
+  "hour_24": true,
+  "theme": "adaptive",
+  "show_media_card": true,
+  "show_radial_visualizer": true,
+  "edge_glow_intensity": 1.0,
+  "smoky_waves_opacity": 0.65,
+  "auto_demo_when_idle": false,
+  "screensaver_mouse_deadzone_px": 18,
+  "lyrics_offset_ms": 0
+}

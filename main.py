@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
+import os
 import subprocess
 import sys
 import threading
-from ctypes import wintypes
+import time
 from pathlib import Path
 from typing import Any, Dict
 
 import webview
 
 from backend.audio_reactive import AudioReactiveAnalyzer
+from backend.eco_monitor import is_fullscreen_app_active
+from backend.history_log import ListeningHistory
 from backend.lyrics_client import LyricsClient
 from backend.media_smtc import WindowsMediaMonitor
-from backend.win_wallpaper import attach_as_wallpaper, strip_window_chrome
+from backend.telemetry import SystemTelemetry
+from backend.tray_manager import TrayManager
+from backend.weather import WeatherService
+from backend.win_wallpaper import attach_as_wallpaper, start_global_hotkey, strip_window_chrome
 
 
 def get_base_dir() -> Path:
@@ -26,16 +31,41 @@ def get_base_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def load_config(base_dir: Path) -> Dict[str, Any]:
-    cfg_path = base_dir / "config.json"
-    if not cfg_path.exists():
-        cfg_path = Path.cwd() / "config.json"
+def get_config_path(base_dir: Path) -> Path:
+    cfg = base_dir / "config.json"
+    if cfg.exists():
+        return cfg
+    return Path.cwd() / "config.json"
+
+
+def load_config(cfg_path: Path) -> Dict[str, Any]:
     try:
         return json.loads(cfg_path.read_text(encoding="utf-8"))
     except Exception:
         return {
-            "locale": "en-US",
+            "locale": "tr-TR",
             "hour_24": True,
+            "theme": "adaptive",
+            "clock_style": "macbook",
+            "clock_size": 88,
+            "particle_mode": "stars",
+            "custom_motto": "",
+            "vinyl_spin": True,
+            "ambient_blur": True,
+            "orbital_rings": True,
+            "night_amber": False,
+            "show_aurora": True,
+            "show_equalizer": True,
+            "show_weather": True,
+            "show_pomodoro": False,
+            "show_hud": True,
+            "show_nebula": True,
+            "magnetic_particles": True,
+            "auto_translate": True,
+            "auto_eco": True,
+            "show_settings": False,
+            "multi_monitor": False,
+            "paused_visuals": False,
             "show_media_card": True,
             "show_radial_visualizer": True,
             "edge_glow_intensity": 1.0,
@@ -54,7 +84,11 @@ class ApiBridge:
         media: WindowsMediaMonitor,
         lyrics: LyricsClient,
         audio: AudioReactiveAnalyzer,
+        telemetry: SystemTelemetry,
+        history: ListeningHistory,
+        weather: WeatherService,
         config: Dict[str, Any],
+        cfg_path: Path,
         screensaver_mode: bool,
         wallpaper_mode: bool,
         demo_mode: bool,
@@ -62,7 +96,11 @@ class ApiBridge:
         self._media = media
         self._lyrics = lyrics
         self._audio = audio
+        self._telemetry = telemetry
+        self._history = history
+        self._weather = weather
         self._config = config
+        self._cfg_path = cfg_path
         self._screensaver_mode = screensaver_mode
         self._wallpaper_mode = wallpaper_mode
         self._demo_mode = demo_mode
@@ -70,24 +108,74 @@ class ApiBridge:
         self._last_track_id = ""
         self._cached_lyrics: list = []
         self._lyrics_loading = False
+        self._last_tel_ts = 0.0
+        self._cached_tel = {"cpu": 0, "ram": 0, "battery": None, "charging": False}
+        self._last_eco_ts = 0.0
+        self._eco_sleep = False
+        self._recent_cache = self._history.get_recent_with_thumbs(6)
+        self._stats_cache = self._history.get_stats()
         self._lock = threading.Lock()
 
     def attach_window(self, window: webview.Window) -> None:
         self._window = window
 
+    def get_config_copy(self) -> Dict[str, Any]:
+        with self._lock:
+            return dict(self._config)
+
+    def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        with self._lock:
+            self._config.update(updates)
+            snapshot = dict(self._config)
+        try:
+            self._cfg_path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return snapshot
+
+    def toggle_paused_visuals(self) -> None:
+        cur = bool(self.get_config_copy().get("paused_visuals", False))
+        self.update_config({"paused_visuals": not cur})
+
     def get_init_config(self) -> Dict[str, Any]:
         return {
-            "config": self._config,
+            "config": self.get_config_copy(),
             "screensaver_mode": self._screensaver_mode,
             "wallpaper_mode": self._wallpaper_mode,
             "demo_mode": self._demo_mode,
+            "recent_tracks": self._recent_cache,
+            "stats": self._stats_cache,
         }
 
     def get_state(self) -> Dict[str, Any]:
         media_state = self._media.get_state()
         audio_state = self._audio.get_spectrum()
 
+        now = time.monotonic()
+        if now - self._last_tel_ts > 1.0:
+            self._last_tel_ts = now
+            self._cached_tel = self._telemetry.read()
+
+        if now - self._last_eco_ts > 1.2:
+            self._last_eco_ts = now
+            auto_eco = bool(self.get_config_copy().get("auto_eco", True))
+            self._eco_sleep = auto_eco and self._wallpaper_mode and is_fullscreen_app_active()
+
         track_id = media_state.get("track_id", "")
+        if track_id and media_state.get("playing"):
+            prev_logged = self._history._last_logged_id
+            self._history.record(
+                track_id,
+                media_state.get("title", ""),
+                media_state.get("artist", ""),
+                int(audio_state.get("bpm", 0)),
+                media_state.get("thumbnail", ""),
+            )
+            if track_id != prev_logged:
+                self._recent_cache = self._history.get_recent_with_thumbs(6)
+                self._stats_cache = self._history.get_stats()
+
+        translate_tr = bool(self.get_config_copy().get("auto_translate", True))
         if track_id and track_id != self._last_track_id and not self._lyrics_loading:
             self._last_track_id = track_id
             self._cached_lyrics = []
@@ -100,6 +188,7 @@ class ApiBridge:
                     media_state.get("album", ""),
                     media_state.get("duration_ms", 0),
                     track_id,
+                    translate_tr,
                 ),
                 daemon=True,
             ).start()
@@ -109,31 +198,31 @@ class ApiBridge:
 
         with self._lock:
             lyrics_copy = list(self._cached_lyrics)
+            cfg_copy = dict(self._config)
 
         return {
             "media": media_state,
             "audio": audio_state,
             "lyrics": lyrics_copy,
-            "pointer": self._get_pointer_position(),
+            "telemetry": self._cached_tel,
+            "weather": self._weather.get(),
+            "recent_tracks": self._recent_cache,
+            "stats": self._stats_cache,
+            "eco_sleep": self._eco_sleep,
+            "config": cfg_copy,
         }
 
-    @staticmethod
-    def _get_pointer_position() -> Dict[str, float] | None:
-        if sys.platform != "win32":
-            return None
-        point = wintypes.POINT()
-        if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
-            return None
-        width = max(1, ctypes.windll.user32.GetSystemMetrics(0))
-        height = max(1, ctypes.windll.user32.GetSystemMetrics(1))
-        return {
-            "x": max(-1.0, min(1.0, point.x / width * 2 - 1)),
-            "y": max(-1.0, min(1.0, point.y / height * 2 - 1)),
-        }
-
-    def _fetch_lyrics_bg(self, title: str, artist: str, album: str, duration_ms: int, track_id: str) -> None:
+    def _fetch_lyrics_bg(
+        self,
+        title: str,
+        artist: str,
+        album: str,
+        duration_ms: int,
+        track_id: str,
+        translate_tr: bool,
+    ) -> None:
         try:
-            lines = self._lyrics.get_lyrics(title, artist, album, duration_ms)
+            lines = self._lyrics.get_lyrics(title, artist, album, duration_ms, translate_tr=translate_tr)
             with self._lock:
                 if self._last_track_id == track_id:
                     self._cached_lyrics = lines
@@ -156,6 +245,7 @@ class ApiBridge:
     def quit_app(self) -> None:
         if self._window:
             self._window.destroy()
+        os._exit(0)
 
 
 def parse_mode(argv: list[str]) -> tuple[str, bool]:
@@ -176,11 +266,6 @@ def parse_mode(argv: list[str]) -> tuple[str, bool]:
     args, _ = parser.parse_known_args(argv)
     if args.wallpaper:
         return ("wallpaper", args.demo)
-    if args.desktop:
-        return ("desktop", args.demo)
-    launch_path = sys.executable if getattr(sys, "frozen", False) else sys.argv[0]
-    if "wallpaper" in Path(launch_path).stem.lower():
-        return ("wallpaper", args.demo)
     return ("desktop", args.demo)
 
 
@@ -191,32 +276,51 @@ def main() -> None:
     if mode == "preview":
         return
 
+    cfg_path = get_config_path(base_dir)
     if mode == "config":
-        cfg_path = base_dir / "config.json"
         if sys.platform == "win32" and cfg_path.exists():
             subprocess.Popen(["notepad.exe", str(cfg_path)])
         return
 
-    config = load_config(base_dir)
+    config = load_config(cfg_path)
     screensaver_mode = mode == "screensaver"
     wallpaper_mode = mode == "wallpaper"
 
     media = WindowsMediaMonitor()
     lyrics = LyricsClient(local_dir=base_dir / "lyrics")
     audio = AudioReactiveAnalyzer()
+    telemetry = SystemTelemetry()
+    history = ListeningHistory()
+    weather = WeatherService()
 
     media.start()
     audio.start()
+    weather.start()
 
     bridge = ApiBridge(
         media=media,
         lyrics=lyrics,
         audio=audio,
+        telemetry=telemetry,
+        history=history,
+        weather=weather,
         config=config,
+        cfg_path=cfg_path,
         screensaver_mode=screensaver_mode,
         wallpaper_mode=wallpaper_mode,
         demo_mode=demo_mode,
     )
+
+    tray = None
+    if not screensaver_mode:
+        tray = TrayManager(
+            base_dir=base_dir,
+            get_config=bridge.get_config_copy,
+            update_config=bridge.update_config,
+            on_quit=bridge.quit_app,
+        )
+        tray.start()
+        start_global_hotkey(bridge.toggle_paused_visuals)
 
     window_title = "Night Constellation"
     html_path = (base_dir / "frontend" / "index.html").as_uri()
@@ -233,13 +337,16 @@ def main() -> None:
 
     def _on_start() -> None:
         if wallpaper_mode:
-            attach_as_wallpaper(window_title)
+            attach_as_wallpaper(window_title, multi_monitor=bool(config.get("multi_monitor", False)))
         else:
             strip_window_chrome(window_title)
 
     try:
         webview.start(func=_on_start, debug=False)
     finally:
+        if tray:
+            tray.stop()
+        weather.stop()
         media.stop()
         audio.stop()
 

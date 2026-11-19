@@ -3,4 +3,8 @@ __pycache__/
 build/
 dist/
 *.spec
-lyrics/
+.venv/
+venv/
+.vscode/
+.idea/
+lyrics/*.lrc

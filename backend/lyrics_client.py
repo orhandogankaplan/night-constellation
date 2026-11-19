@@ -1,4 +1,4 @@
-"""Synced lyrics fetcher using LRCLIB API + plainLyrics fallback + local .lrc + disk cache."""
+"""Synced lyrics fetcher using LRCLIB API + plainLyrics fallback + Turkish translation + disk cache."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import requests
 
 LRC_LINE_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\](.*)")
 WORD_TIME_RE = re.compile(r"<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>")
+TURKISH_CHARS_RE = re.compile(r"[çğıöşüÇĞİÖŞÜ]")
 
 
 def _to_ms(minutes: str, seconds: str, frac: Optional[str]) -> int:
@@ -104,6 +105,37 @@ def distribute_plain_lyrics(plain_text: str, duration_ms: int = 0) -> List[Dict[
     return result
 
 
+def translate_lines_to_turkish(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Best-effort lightweight translation of non-Turkish lyric lines into Turkish."""
+    if not lines:
+        return lines
+    sample = " ".join(ln.get("text", "") for ln in lines[:6])
+    if TURKISH_CHARS_RE.search(sample):
+        return lines  # Already Turkish
+
+    # Batch translate in groups of 12 lines using public translate endpoint
+    batch_size = 12
+    for start in range(0, min(len(lines), 48), batch_size):
+        chunk = lines[start : start + batch_size]
+        joined = "\n".join(ln.get("text", "") for ln in chunk)
+        try:
+            resp = requests.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params={"client": "gtx", "sl": "auto", "tl": "tr", "dt": "t", "q": joined},
+                timeout=4.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                translated_text = "".join(seg[0] for seg in data[0] if seg and seg[0])
+                tr_lines = [t.strip() for t in translated_text.splitlines() if t.strip()]
+                for idx, tr in enumerate(tr_lines):
+                    if idx < len(chunk):
+                        chunk[idx]["tr"] = tr
+        except Exception:
+            break
+    return lines
+
+
 class LyricsClient:
     """Fetches and caches synced LRC lyrics from LRCLIB or local ./lyrics folder."""
 
@@ -117,14 +149,23 @@ class LyricsClient:
         raw = f"{artist.lower().strip()}::{title.lower().strip()}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
-    def get_lyrics(self, title: str, artist: str, album: str = "", duration_ms: int = 0) -> List[Dict[str, Any]]:
+    def get_lyrics(
+        self,
+        title: str,
+        artist: str,
+        album: str = "",
+        duration_ms: int = 0,
+        translate_tr: bool = False,
+    ) -> List[Dict[str, Any]]:
         if not title:
             return []
         key = self._cache_key(title, artist)
         if key in self._mem_cache:
-            return self._mem_cache[key]
+            cached = self._mem_cache[key]
+            if translate_tr and cached and "tr" not in cached[0]:
+                translate_lines_to_turkish(cached)
+            return cached
 
-        # 1. Check local ./lyrics/*.lrc
         if self.local_dir and self.local_dir.exists():
             safe_both = re.sub(r'[\\/:*?"<>|]', "", f"{artist} - {title}").strip()
             safe_title = re.sub(r'[\\/:*?"<>|]', "", title).strip()
@@ -135,25 +176,31 @@ class LyricsClient:
                 if candidate.exists():
                     parsed = parse_lrc(candidate.read_text(encoding="utf-8", errors="ignore"))
                     if parsed:
+                        if translate_tr:
+                            translate_lines_to_turkish(parsed)
                         self._mem_cache[key] = parsed
                         return parsed
 
-        # 2. Check disk cache (only use if non-empty, so previously missed tracks retry)
         cache_file = self.cache_dir / f"{key}.json"
         if cache_file.exists():
             try:
                 data = json.loads(cache_file.read_text(encoding="utf-8"))
                 if data:
+                    if translate_tr and "tr" not in data[0]:
+                        translate_lines_to_turkish(data)
+                        cache_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
                     self._mem_cache[key] = data
                     return data
             except Exception:
                 pass
 
-        # 3. Query LRCLIB (synced first, plainLyrics fallback)
         synced, plain = self._fetch_lrclib(title, artist, album, duration_ms)
         parsed = parse_lrc(synced) if synced else []
         if not parsed and plain:
             parsed = distribute_plain_lyrics(plain, duration_ms)
+
+        if parsed and translate_tr:
+            translate_lines_to_turkish(parsed)
 
         self._mem_cache[key] = parsed
         if parsed:
@@ -164,7 +211,7 @@ class LyricsClient:
         return parsed
 
     def _fetch_lrclib(self, title: str, artist: str, album: str, duration_ms: int) -> tuple[str, str]:
-        headers = {"User-Agent": "NightConstellation/1.1 (https://github.com/night-constellation)"}
+        headers = {"User-Agent": "NightConstellation/1.2 (https://github.com/night-constellation)"}
         clean_title = _clean_query_text(title)
         clean_artist = _clean_query_text(artist)
 

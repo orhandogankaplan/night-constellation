@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Night Constellation</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <canvas id="constellation-canvas"></canvas>
+
+  <div class="edge-aura" id="edge-aura"></div>
+
+  <header class="clock-header">
+    <div id="date-label" class="date-label">Fri 13 Nov</div>
+    <div id="time-label" class="time-label">00:52</div>
+  </header>
+
+  <main class="idle-stage" id="idle-stage">
+    <div class="radial-wrap" id="radial-wrap">
+      <canvas id="radial-canvas" width="320" height="320"></canvas>
+      <div class="center-art-ring" id="center-art-ring">
+        <img id="center-album-art" alt="Album Cover" class="hidden" />
+        <div id="center-album-fallback" class="center-album-fallback">♪</div>
+      </div>
+    </div>
+
+    <div class="media-pill hidden" id="media-pill">
+      <div class="album-wrap">
+        <img id="album-art" alt="Album Art" class="hidden" />
+        <div id="album-fallback" class="album-fallback">♪</div>
+      </div>
+      <div class="track-meta">
+        <div id="track-title" class="track-title">Not Playing</div>
+        <div id="track-artist" class="track-artist">Play music to start</div>
+        <div class="progress-track">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+      <div class="media-controls">
+        <button id="btn-prev" class="ctrl-btn" title="Previous" aria-label="Previous">&#9198;</button>
+        <button id="btn-play" class="ctrl-btn primary" title="Play / Pause" aria-label="Play or Pause">&#9654;</button>
+        <button id="btn-next" class="ctrl-btn" title="Next" aria-label="Next">&#9197;</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="desktop-hud" id="desktop-hud">
+    <button id="btn-demo" class="hud-chip" title="Toggle Demo Mode (D)">Demo: Off</button>
+    <button id="btn-exit" class="hud-chip" title="Exit (Esc)">Exit</button>
+  </div>
+
+  <script src="constellation.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
